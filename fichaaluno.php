@@ -1,19 +1,20 @@
+
 <?php
 require_once __DIR__ . '/auth/auth.php';
 require_once __DIR__ . '/layout.php';
 iniciarSessao();
 requireRole('aluno', 'gestor');
-
+ 
 $pdo    = getDB();
 $perfil = obterPerfil();
 $msg    = '';
 $erro   = '';
-
+ 
 if ($perfil === 'aluno') {
     $stmtA = $pdo->prepare('SELECT * FROM `alunos` WHERE `mail`=? LIMIT 1');
     $stmtA->execute([$_SESSION['mail']]);
     $aluno = $stmtA->fetch();
-
+ 
     if (!$aluno) {
         if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['criar_aluno'])) {
             $pdo->prepare('INSERT INTO `alunos` (`nome`, `mail`) VALUES (?,?)')->execute([$_SESSION['nome'], $_SESSION['mail']]);
@@ -23,20 +24,20 @@ if ($perfil === 'aluno') {
         $stmtF = $pdo->prepare('SELECT * FROM `ficha aluno` WHERE `aluno ID`=? ORDER BY ID DESC LIMIT 1');
         $stmtF->execute([$aluno['ID']]);
         $ficha = $stmtF->fetch();
-
+ 
         if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submeter'])) {
             if ($ficha) {
                 $pdo->prepare("UPDATE `ficha aluno` SET `estado`='submetida', `data submissão`=NOW() WHERE ID=?")->execute([$ficha['ID']]);
             }
             header('Location: fichaaluno.php'); exit;
         }
-
+ 
         if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guardar'])) {
             $morada = trim($_POST['morada'] ?? '');
             $dataN  = trim($_POST['data_nascimento'] ?? '');
             $tel    = trim($_POST['telefone'] ?? '');
-            $foto_path = $ficha['foto'] ?? '';
-
+            $foto = $ficha['foto'] ?? '';
+ 
             if (!empty($_FILES['foto']['name'])) {
                 $ext = strtolower(pathinfo($_FILES['foto']['name'], PATHINFO_EXTENSION));
                 if (!in_array($ext, ['jpg','jpeg','png'])) {
@@ -46,36 +47,36 @@ if ($perfil === 'aluno') {
                 } else {
                     $dir = __DIR__ . '/uploads/';
                     if (!is_dir($dir)) mkdir($dir, 0755, true);
-                    $nome_foto = 'aluno_' . $aluno['ID'] . '_' . time() . '.' . $ext;
-                    move_uploaded_file($_FILES['foto']['tmp_name'], $dir . $nome_foto);
-                    $foto_path = 'uploads/' . $nome_foto;
+                    $foto = 'aluno_' . $aluno['ID'] . '_' . time() . '.' . $ext;
+                    move_uploaded_file($_FILES['foto']['tmp_name'], $dir . $foto);
+                    $foto = 'uploads/' . $foto;
                 }
             }
-
+ 
             if (!$erro) {
                 $pdo->prepare('UPDATE `alunos` SET `morada`=?, `data nascimento`=?, `telefone`=? WHERE ID=?')
                     ->execute([$morada, $dataN ?: null, $tel, $aluno['ID']]);
                 if ($ficha) {
-                    $pdo->prepare("UPDATE `ficha aluno` SET `foto`=?, `estado`='rascunho' WHERE ID=?")->execute([$foto_path, $ficha['ID']]);
+                    $pdo->prepare("UPDATE `ficha aluno` SET `foto`=?, `estado`='rascunho' WHERE ID=?")->execute([$foto, $ficha['ID']]);
                 } else {
-                    $pdo->prepare("INSERT INTO `ficha aluno` (`aluno ID`, `foto`, `estado`) VALUES (?,?,'rascunho')")->execute([$aluno['ID'], $foto_path]);
+                    $pdo->prepare("INSERT INTO `ficha aluno` (`aluno ID`, `foto`, `estado`) VALUES (?,?,'rascunho')")->execute([$aluno['ID'], $foto]);
                 }
                 header('Location: fichaaluno.php'); exit;
             }
         }
-
+ 
         $stmtA->execute([$_SESSION['mail']]); $aluno = $stmtA->fetch();
         $stmtF->execute([$aluno['ID']]); $ficha = $stmtF->fetch();
     }
 }
-
+ 
 if ($perfil === 'gestor') {
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['decisao'])) {
         $ficha_id    = (int)$_POST['ficha_id'];
         $decisao     = $_POST['decisao'] === 'aprovar' ? 'aprovada' : 'rejeitada';
-        $observacoes = trim($_POST['observacoes'] ?? '');
-        $pdo->prepare("UPDATE `ficha aluno` SET `estado`=?, `observacoes`=?, `data validacao`=NOW() WHERE ID=?")
-            ->execute([$decisao, $observacoes, $ficha_id]);
+        $observações = trim($_POST[''] ?? '');
+        $pdo->prepare("UPDATE `ficha aluno` SET `estado`=?, `observações`=?, `data validacao`=NOW() WHERE ID=?")
+            ->execute([$decisao, $observações, $ficha_id]);
         $msg = 'Ficha ' . ($decisao === 'aprovada' ? 'aprovada' : 'rejeitada') . ' com sucesso!';
     }
     $fichas = $pdo->query("
@@ -85,18 +86,18 @@ if ($perfil === 'gestor') {
         ORDER BY FIELD(fa.estado,'submetida','rascunho','aprovada','rejeitada'), fa.ID DESC
     ")->fetchAll();
 }
-
+ 
 layout_head('Ficha de Aluno');
 layout_nav('Ficha de Aluno', getDashboardUrl());
 ?>
 <div class="page">
 <?php if ($msg):  ?><div class="alerta alerta-ok">✅ <?= htmlspecialchars($msg) ?></div><?php endif; ?>
 <?php if ($erro): ?><div class="alerta alerta-erro">⚠️ <?= htmlspecialchars($erro) ?></div><?php endif; ?>
-
+ 
 <?php if ($perfil === 'aluno'): ?>
     <h1>A Minha Ficha</h1>
     <p class="subtitulo">Preenche os teus dados e submete para validação.</p>
-
+ 
     <?php if (!$aluno): ?>
         <div class="card">
             <h2>Primeiro acesso</h2>
@@ -112,11 +113,11 @@ layout_nav('Ficha de Aluno', getDashboardUrl());
         $badgeText  = match($estado) { 'rascunho'=>'✏️ Rascunho', 'submetida'=>'⏳ Aguarda validação', 'aprovada'=>'✅ Aprovada', 'rejeitada'=>'❌ Rejeitada', default=>$estado };
     ?>
         <span class="badge <?= $badgeClass ?>" style="margin-bottom:1.2rem;display:inline-block"><?= $badgeText ?></span>
-
-        <?php if ($estado === 'rejeitada' && !empty($ficha['observacoes'])): ?>
+ 
+        <?php if ($estado === 'rejeitada' && !empty($ficha['observações'])): ?>
             <div class="alerta alerta-erro">💬 Motivo: <?= htmlspecialchars($ficha['observacoes']) ?></div>
         <?php endif; ?>
-
+ 
         <form method="POST" enctype="multipart/form-data">
             <div class="card">
                 <h2>👤 Dados Pessoais</h2>
@@ -144,7 +145,7 @@ layout_nav('Ficha de Aluno', getDashboardUrl());
             <?php endif; ?>
         </form>
     <?php endif; ?>
-
+ 
 <?php elseif ($perfil === 'gestor'): ?>
     <h1>Fichas de Alunos</h1>
     <p class="subtitulo">Valida ou rejeita as fichas submetidas pelos alunos.</p>
@@ -155,13 +156,13 @@ layout_nav('Ficha de Aluno', getDashboardUrl());
         <?php else: ?>
             <div class="table-wrap">
             <table>
-                <thead><tr><th>#</th><th>Aluno</th><th>Email</th><th>Estado</th><th>Submissão</th><th>Ação</th></tr></thead>
+                <thead><tr><th>Foto</th><th>Aluno</th><th>Email</th><th>Estado</th><th>Submissão</th><th>Ação</th></tr></thead>
                 <tbody>
                 <?php foreach ($fichas as $f):
                     $bc = match($f['estado']) { 'aprovada'=>'b-emerald','rejeitada'=>'b-rose','submetida'=>'b-amber',default=>'b-slate' };
                 ?>
                     <tr>
-                        <td><?= $f['ID'] ?></td>
+                        <td><?php if (!empty($f['foto']) && file_exists(__DIR__.'/'.$f['foto'])): ?><img src="/trabalho1-PHP/<?= htmlspecialchars($f['foto']) ?>" style="width:45px;height:45px;border-radius:50%;object-fit:cover;border:2px solid var(--indigo);"><?php else: ?><div style="width:45px;height:45px;border-radius:50%;background:var(--bg2);display:flex;align-items:center;justify-content:center;">👤</div><?php endif; ?></td>
                         <td><?= htmlspecialchars($f['aluno_nome']) ?></td>
                         <td><?= htmlspecialchars($f['aluno_mail']) ?></td>
                         <td><span class="badge <?= $bc ?>"><?= ucfirst($f['estado']) ?></span></td>
@@ -173,7 +174,7 @@ layout_nav('Ficha de Aluno', getDashboardUrl());
                                     <div class="form-decisao">
                                         <form method="POST">
                                             <input type="hidden" name="ficha_id" value="<?= $f['ID'] ?>">
-                                            <textarea name="observacoes" placeholder="Observações (opcional)"></textarea>
+                                            <textarea name="observações" placeholder="Observações (opcional)"></textarea>
                                             <div class="btn-group">
                                                 <button type="submit" name="decisao" value="aprovar" class="btn btn-success">✅ Aprovar</button>
                                                 <button type="submit" name="decisao" value="rejeitar" class="btn btn-danger">❌ Rejeitar</button>
@@ -182,7 +183,7 @@ layout_nav('Ficha de Aluno', getDashboardUrl());
                                     </div>
                                 </details>
                             <?php else: ?>
-                                <small style="color:var(--texto2)"><?= htmlspecialchars($f['observacoes'] ?? '—') ?></small>
+                                <small style="color:var(--texto2)"><?= htmlspecialchars($f['observações'] ?? '—') ?></small>
                             <?php endif; ?>
                         </td>
                     </tr>
